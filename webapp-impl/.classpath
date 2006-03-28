@@ -9,5 +9,6 @@
 	<classpathentry combineaccessrules="false" kind="src" path="/util"/>
 	<classpathentry combineaccessrules="false" kind="src" path="/authz-api"/>
 	<classpathentry combineaccessrules="false" kind="src" path="/webapp-api"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/webapp-util"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>
