@@ -2,6 +2,7 @@
 <classpath>
 	<classpathentry excluding="**/.DS_Store" kind="src" path="util/src/java"/>
 	<classpathentry excluding="**/.DS_Store" kind="src" path="servlet/src/java"/>
+	<classpathentry kind="src" path="servlet/src/test"/>
 	<classpathentry kind="var" path="JRE_LIB" sourcepath="JRE_SRC"/>
 	<classpathentry kind="var" path="M2_REPO/commons-logging/commons-logging/1.0.4/commons-logging-1.0.4.jar"/>
 	<classpathentry combineaccessrules="false" kind="src" path="/component-api"/>
@@ -10,5 +11,6 @@
 	<classpathentry combineaccessrules="false" kind="src" path="/tool-api"/>
 	<classpathentry kind="var" path="M2_REPO/commons-fileupload/commons-fileupload/1.1.1/commons-fileupload-1.1.1.jar"/>
 	<classpathentry combineaccessrules="false" kind="src" path="/util-api"/>
+	<classpathentry kind="var" path="JUNIT_HOME/junit.jar" sourcepath="ECLIPSE_HOME/plugins/org.eclipse.jdt.source_3.1.1/src/org.junit_3.8.1/junitsrc.zip"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>
