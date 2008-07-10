@@ -45,6 +45,7 @@ import javax.servlet.http.HttpServletResponseWrapper;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.sakaiproject.authz.api.FunctionManager;
+import org.sakaiproject.component.cover.ServerConfigurationService;
 import org.sakaiproject.tool.api.ActiveTool;
 import org.sakaiproject.tool.api.ActiveToolManager;
 import org.sakaiproject.tool.api.Placement;
@@ -636,6 +637,12 @@ public abstract class ActiveToolComponent extends ToolComponent implements Activ
 				return m_context;
 			}
 
+			public String getWrappedContextPath()
+			{
+				return m_context;
+			}
+
+			
 			public Object getAttribute(String name)
 			{
 				if (m_attributes.containsKey(name))
@@ -764,6 +771,16 @@ public abstract class ActiveToolComponent extends ToolComponent implements Activ
 
 			public void sendRedirect(String url) throws IOException
 			{
+				// SAK-13408 - Relative redirections are based on the request URI. This fix addresses the problem 
+				// of Websphere having a different request URI than Tomcat. Instead, the request context path and
+				// given relative URL is used to form a new absolute URL to redirect to.
+				if (ServerConfigurationService.getString("servlet.container").equals("websphere"))
+				{
+			    	if (!(url.toLowerCase().startsWith("http")) && !(url.startsWith("/"))) {
+			    		ActiveToolComponent.MyActiveTool.WrappedRequest wr = (WrappedRequest) this.m_req;
+			    		url = wr.getWrappedContextPath() + "/" + url;
+			    	}
+				}
 				super.sendRedirect(rewriteURL(url));
 			}
 
