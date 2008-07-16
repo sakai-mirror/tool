@@ -33,6 +33,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.StringTokenizer;
 
 import javax.servlet.RequestDispatcher;
 import javax.servlet.ServletContext;
@@ -637,12 +638,6 @@ public abstract class ActiveToolComponent extends ToolComponent implements Activ
 				return m_context;
 			}
 
-			public String getWrappedContextPath()
-			{
-				return m_context;
-			}
-
-			
 			public Object getAttribute(String name)
 			{
 				if (m_attributes.containsKey(name))
@@ -772,16 +767,53 @@ public abstract class ActiveToolComponent extends ToolComponent implements Activ
 			public void sendRedirect(String url) throws IOException
 			{
 				// SAK-13408 - Relative redirections are based on the request URI. This fix addresses the problem 
-				// of Websphere having a different request URI than Tomcat. Instead, the request context path and
-				// given relative URL is used to form a new absolute URL to redirect to.
+				// of Websphere having a different request URI than Tomcat. Instead, the relative URL will be
+				// converted to an absolute URL.
 				if (ServerConfigurationService.getString("servlet.container").equals("websphere"))
 				{
-			    	if (!(url.toLowerCase().startsWith("http")) && !(url.startsWith("/"))) {
-			    		ActiveToolComponent.MyActiveTool.WrappedRequest wr = (WrappedRequest) this.m_req;
-			    		url = wr.getWrappedContextPath() + "/" + url;
-			    	}
+			    	url = createAbsoluteURL(url);
 				}
 				super.sendRedirect(rewriteURL(url));
+			}
+
+			/**
+			 * This method takes the given relative Sakai URL and uses the
+			 * context path and path info to create the corresponding 
+			 * absolute URL.
+			 * 
+			 * @param relativeUrl the relative URL to convert to an absolute URL
+			 * @return the absolute URL
+			 */
+			protected String createAbsoluteURL(String relativeUrl) {
+				// ensure this is a relative URL
+				if (!(relativeUrl.toLowerCase().startsWith("http")) && !(relativeUrl.startsWith("/"))) 
+				{
+					ActiveToolComponent.MyActiveTool.WrappedRequest wr = (WrappedRequest) this.m_req;
+					
+					// need to obtain any extra path info from the path
+					StringBuilder pathBuilder = new StringBuilder("");
+					if (wr.m_path != null)
+					{
+						StringTokenizer pathTokenizer = new StringTokenizer(wr.m_path, "/");
+						// if the path has more than one segment (eg. "/name1/name2")
+						if (pathTokenizer.countTokens() > 1)
+						{
+							// copy over everything but the last segment
+							for (int i = 0; i < pathTokenizer.countTokens() - 1; i++)
+							{
+								pathBuilder.append("/");
+								pathBuilder.append(pathTokenizer.nextToken());
+							}
+						}
+					}
+					if (!pathBuilder.toString().endsWith("/"))
+					{
+						pathBuilder.append("/");
+					}
+
+					relativeUrl = wr.m_context + pathBuilder.toString() + relativeUrl;
+				}
+				return relativeUrl;
 			}
 
 			/**
