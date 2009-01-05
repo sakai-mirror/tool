@@ -1117,6 +1117,10 @@ public class RequestFilter implements Filter
 				c = new Cookie(SESSION_COOKIE, sessionId);
 				c.setPath("/");
 				c.setMaxAge(-1);
+				if (req.isSecure() == true)
+				{
+					c.setSecure(true);
+				}
 				res.addCookie(c);
 			}
 		}
