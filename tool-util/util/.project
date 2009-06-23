@@ -1,0 +1,15 @@
+<projectDescription>
+  <name>sakai-tool-util</name>
+  <comment/>
+  <projects>
+    <project>sakai-tool-api</project>
+  </projects>
+  <buildSpec>
+    <buildCommand>
+      <name>org.eclipse.jdt.core.javabuilder</name>
+    </buildCommand>
+  </buildSpec>
+  <natures>
+    <nature>org.eclipse.jdt.core.javanature</nature>
+  </natures>
+</projectDescription>
