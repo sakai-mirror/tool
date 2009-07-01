@@ -75,6 +75,10 @@ public class RequestFilter implements Filter
 	/** The request attribute name used to store the Sakai session. */
 	public static final String ATTR_SESSION = "sakai.session";
 
+	/** The request attribute name used to ask the RequestFilter to output
+	 * a client cookie at the end of the request cycle. */
+	public static final String ATTR_SET_COOKIE = "sakai.set.cookie";
+	
 	/** The request attribute name (and value) used to indicated that the request has been filtered. */
 	public static final String ATTR_FILTERED = "sakai.filtered";
 
@@ -92,6 +96,9 @@ public class RequestFilter implements Filter
 
 	/** Config parameter to control http session handling. */
 	public static final String CONFIG_SESSION = "http.session";
+
+	/** Config parameter to control whether to check the request principal before any cookie to establish a session */
+	public static final String CONFIG_SESSION_AUTH = "sakai.session.auth";
 
 	/** Config parameter to control remote user handling. */
 	public static final String CONFIG_REMOTE_USER = "remote.user";
@@ -217,6 +224,8 @@ public class RequestFilter implements Filter
 
 	protected boolean m_uploadEnabled = true;
 
+	protected boolean m_checkPrincipal = false; 
+	
 	protected long m_uploadMaxSize = 1L * 1024L * 1024L;
 
 	protected long m_uploadCeiling = 1L * 1024L * 1024L;
@@ -427,6 +436,7 @@ public class RequestFilter implements Filter
 						newUrl.append(placementId);
 						url = newUrl.toString();
 					}
+								
 				}
 			}
 
@@ -593,6 +603,30 @@ public class RequestFilter implements Filter
 
 					// post-process response
 					postProcessResponse(s, req, resp);
+
+					// Output client cookie if requested to do so
+					if (s != null && req.getAttribute(ATTR_SET_COOKIE) != null) {
+						
+						// check for existing cookie
+						String suffix = getCookieSuffix();
+						Cookie c = findCookie(req, SESSION_COOKIE, suffix);
+
+						// the cookie value we need to use
+						String sessionId = s.getId() + DOT + suffix;
+
+						// set the cookie if necessary
+						if ((c == null) || (!c.getValue().equals(sessionId))) {
+							c = new Cookie(SESSION_COOKIE, sessionId);
+							c.setPath("/");
+							c.setMaxAge(-1);
+							if (req.isSecure() == true)
+							{
+								c.setSecure(true);
+							}
+							resp.addCookie(c);
+						}
+					}
+
 				}
 				catch (Throwable t)
 				{
@@ -605,6 +639,7 @@ public class RequestFilter implements Filter
 					cleared = true;
 				}
 			}
+			
 		}
 		finally
 		{
@@ -627,6 +662,7 @@ public class RequestFilter implements Filter
 				M_log.debug("request timing (ms): " + elapsedTime);
 			}
 		}
+		
 	}
 
 	/**
@@ -682,6 +718,11 @@ public class RequestFilter implements Filter
 		if (filterConfig.getInitParameter(CONFIG_REMOTE_USER) != null)
 		{
 			m_sakaiRemoteUser = Boolean.valueOf(filterConfig.getInitParameter(CONFIG_REMOTE_USER)).booleanValue();
+		}
+
+		if (filterConfig.getInitParameter(CONFIG_SESSION_AUTH) != null)
+		{
+			m_checkPrincipal= "basic".equals(filterConfig.getInitParameter(CONFIG_SESSION_AUTH));
 		}
 
 		if (filterConfig.getInitParameter(CONFIG_TOOL_PLACEMENT) != null)
@@ -996,77 +1037,71 @@ public class RequestFilter implements Filter
 	{
 		Session s = null;
 		String sessionId = null;
-
-		// compute the session cookie suffix, based on this configured server id
-		String suffix = System.getProperty(SAKAI_SERVERID);
-		if ((suffix == null) || (suffix.length() == 0))
-		{
-			if (m_displayModJkWarning)
-			{
-				M_log.info("no sakai.serverId system property set - mod_jk load balancing will not function properly");
-
-				// only display warning once
-				// FYI this is not thread safe, but the side effects are negligible and not worth the overhead of synchronizing
-				// -lance
-				m_displayModJkWarning = false;
-			}
-
-			suffix = "sakai";
-		}
-
+		boolean allowSetCookieEarly = true;
+		Cookie c = null;
+		
 		// automatic, i.e. not from user activite, request?
 		boolean auto = req.getParameter(PARAM_AUTO) != null;
 
-		sessionId = req.getParameter(ATTR_SESSION);
+		String suffix = getCookieSuffix();
 
-		// find our session id from our cookie
-		Cookie c = findCookie(req, SESSION_COOKIE, suffix);
+		// try finding a non-cookie session based on the remote user / principal
+		// Note: use principal instead of remote user to avoid any possible confusion with the remote user set by single-signon
+		// auth.
+		// Principal is set by our Dav interface, which this is designed to cover. -ggolden
+		
+		Principal principal = req.getUserPrincipal();
 
-		if (sessionId == null && c != null)
+		if (m_checkPrincipal && (principal != null) && (principal.getName() != null))
 		{
-			// get our session id
-			sessionId = c.getValue();
-		}
+			// set our session id to the remote user id
+			sessionId = SessionManager.makeSessionId(req, principal);
 
-		if (sessionId != null)
-		{
-			// remove the server id suffix
-			final int dotPosition = sessionId.indexOf(DOT);
-			if (dotPosition > -1)
-			{
-				sessionId = sessionId.substring(0, dotPosition);
-			}
-			if (M_log.isDebugEnabled())
-			{
-				M_log.debug("assureSession found sessionId in cookie: " + sessionId);
-			}
-
+			// don't supply this cookie to the client
+			allowSetCookieEarly = false;
+			
 			// find the session
 			s = SessionManager.getSession(sessionId);
+
+			// if not found, make a session for this user
+			if (s == null)
+			{
+				s = SessionManager.startSession(sessionId);
+			}
+			
+			// Make these sessions expire after 10 minutes
+			s.setMaxInactiveInterval(10*60);
 		}
 
-		// if no cookie, try finding a non-cookie session based on the remote user / principal
-		else
+		// if no principal, check request parameter and cookie
+		if (sessionId == null || s == null)
 		{
-			// Note: use principal instead of remote user to avoid any possible confusion with the remote user set by single-signon
-			// auth.
-			// Principal is set by our Dav interface, which this is desined to cover. -ggolden
-			// String remoteUser = req.getRemoteUser();
-			Principal principal = req.getUserPrincipal();
+			sessionId = req.getParameter(ATTR_SESSION);
 
-			if ((principal != null) && (principal.getName() != null))
+			// find our session id from our cookie
+			c = findCookie(req, SESSION_COOKIE, suffix);
+
+			if (sessionId == null && c != null)
 			{
-				// set our session id to the remote user id
-				sessionId = principal.getName();
+				// get our session id
+				sessionId = c.getValue();
+			}
+
+			if (sessionId != null)
+			{
+				// remove the server id suffix
+				final int dotPosition = sessionId.indexOf(DOT);
+				if (dotPosition > -1)
+				{
+					sessionId = sessionId.substring(0, dotPosition);
+				}
+				if (M_log.isDebugEnabled())
+				{
+					M_log.debug("assureSession found sessionId in cookie: " + sessionId);
+				}
 
 				// find the session
 				s = SessionManager.getSession(sessionId);
-
-				// if not found, make a session for this user
-				if (s == null)
-				{
-					s = SessionManager.startSession(sessionId);
-				}
 			}
 		}
 
@@ -1106,7 +1141,7 @@ public class RequestFilter implements Filter
 
 		// if we have a session and had no cookie,
 		// or the cookie was to another session id, set the cookie
-		if (s != null)
+		if ((s != null) && allowSetCookieEarly)
 		{
 			// the cookie value we need to use
 			sessionId = s.getId() + DOT + suffix;
@@ -1283,4 +1318,26 @@ public class RequestFilter implements Filter
 
 		return url.toString();
 	}
+	
+	/**
+	 * Get cookie suffix from the serverId.
+	 * We can't do this at init time as it might not have been set yet (sakai hasn't started).
+	 * @return The cookie suffix to use.
+	 */
+	private String getCookieSuffix()
+	{
+		// compute the session cookie suffix, based on this configured server id
+		String suffix = System.getProperty(SAKAI_SERVERID);
+		if ((suffix == null) || (suffix.length() == 0))
+		{
+			if (m_displayModJkWarning)
+			{
+				M_log.warn("no sakai.serverId system property set - mod_jk load balancing will not function properly");
+			}
+			m_displayModJkWarning = false;
+			suffix = "sakai";
+		}
+		return suffix;
+	}
+
 }
