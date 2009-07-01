@@ -21,6 +21,9 @@
 
 package org.sakaiproject.tool.api;
 
+import java.security.Principal;
+import javax.servlet.http.HttpServletRequest;
+
 /**
  * <p>
  * SessionManager keeps track of Sakai-wide and Tool placement specific user sessions, modeled on the HttpSession of the Servlet API.
@@ -37,6 +40,13 @@ public interface SessionManager
 	 * @return The Session object that has this id, or null if the id is not known.
 	 */
 	Session getSession(String sessionId);
+
+	/**
+	 * Generate a session ID for the given request and principal
+	 * 
+	 * @return The session id that should be used for the given request and principal.
+	 */
+	String makeSessionId(HttpServletRequest req, Principal principal);
 
 	/**
 	 * Start a new session.
